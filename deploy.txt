@@ -1,1 +1,16 @@
 deploying an application
+
+step1: Check for an Existing SSH Key
+
+		1) Show the public key:
+		   cat ~/.ssh/id_ed25519.pub
+		2) Copy the whole output (starts with ssh-ed25519).
+		3) Go to GitHub SSH settings → New SSH key:
+			Title: e.g., "laptop key"
+			Key: paste the copied content
+
+1
+2
+3
+4
+
