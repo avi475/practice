@@ -1,0 +1,10 @@
+Linux, shell scripting
+cloud - AWS
+Iac(Infrastructure as code): Terraform
+Configuration management tool: Ansible
+CICD: Jenkins, argoCD, gitlab
+build tool: Maven
+code analysis: Sonarqube
+containerization: Docker
+container orchastration: K8s(Kubernetes)
+monitoring tools: Grafana, prometheseos, zabbix

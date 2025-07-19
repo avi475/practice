@@ -1,0 +1,382 @@
+Ansible - configuration management tool
+-----------------------------------------
+Before deploying the application we need to make servers ready
+
+1) install packages
+2) install programming lang, modules
+3) install run time env
+4) create users, groups
+5) setup permissions
+
+python script --> test.py --> python test.py
+shell scripts  --> test.sh --> sh test.sh
+
+cd ../..
+mkdir test
+touch test.txt
+
+shell scripting
+-----------------
+1) imperative --> sequence based, complex logic
+2) homogenous --> script is not same for all OS distributions
+3) diffucult to run into large set of servers
+4) difficult to validate
+
+Adv of Ansible
+--------------
+1) declarative 
+2) heterogenous --> Ansible can query the OS and run commands based on that 
+3) easily scalable
+4) we can validate via Ansible
+
+configuration management Tools
+-------------------------------
+Chef
+Puppet
+Ansible
+
+LIC policy
+-----------
+user --> lic agent --> lic office
+
+user --> directly we can pay in online
+
+
+pull mechanism --> chef, puppet
+-------------------------------
+1) worker nodes should connect to master node through agent softawre
+2) nodes should download the configurations periodically say every 30 mins
+3) even there not change in configuration, agent should connect to master server that creates unnecessary traffic and data consuption
+
+push mechanism --> Ansible
+----------------------------
+1) no need of agent installation
+2) whenever there is change in configurations, server can push to the nodes directly
+3) asnsible uses ssh auth to connect to the server 
+
+ssh --> port no 22
+
+yum install ansible
+ansible --version
+ansible all -i "43.204.214.248," -u ec2-user --private-key /home/ec2-user/practice_1.pem -m ping
+
+
+hyd to blr
+-----------
+hyd DTDC ----> Bangalore central DTDC ---> bangalore regional DTDC  --->  home 
+1st method--> pull(chef, puppet)
+-----------------------------
+5 days
+1st day
+2nd day
+3rd day
+4th day
+5th day -> you got the parcel
+
+2nd method--> push(ansible)
+--------------------------
+whenever parcel comes a person come and give it to your BLR home
+
+IP/hostname
+Username
+Password/private key(e.g. pem key)
+
+scp(secure copy protocol) --> to transfer the files/directories local to server or server to local 
+scp -i .\practice_1.pem .\practice_1.pem ec2-user@3.110.101.222:/home/ec2-user/
+scp -i <private_key_path> <source_file_path> <username>@<IP/hostname>:<destination_path>
+
+geography based --> IN , UK, US, AU etc
+env --> DEV, CA, PROD etc
+component--> web, app, db
+server --> mangodb, cart, catalogue
+
+server1 --> FK_UK_PROD_app_cart --> server name
+s2  --> FK_IN_DEV_web_mangodb
+
+inventory
+----------
+[web]
+123.3.7.8
+2.45.6.8
+
+[app]
+2.5.76.7
+98.5.6.7
+
+adhoc commands
+-------------------
+ansible all -i "3.110.158.198," -u ec2-user --private-key /home/ec2-user/practice_1.pem -m ping
+ansible all -i "3.110.158.198," -u ec2-user --private-key /home/ec2-user/practice_1.pem -m shell -a "ls -l /home/ec2-user"
+ansible all -i "15.206.127.104," -u ec2-user --private-key practice_1.pem -m shell "touch test.txt /home/ec2-user/"
+ 
+inventory --> list of hosts your ansible server is managing
+playbook  --> define tasks which you want to configure into the servers
+
+ls --> command in linux
+in ansible we call as module 
+
+YAML --> yet another markup language
+HTML --> Hyper text markup language
+
+systemctl command
+-------------------
+systemctl <option> <package>
+systemctl status nginx
+systemctl start nginx
+syatemctl stop nginx
+
+hosts.ini
+----------
+[web]
+43.204.147.110 ansible_user=ec2-user ansible_ssh_private_key_file=/home/ec2-user/practice_1.pem
+
+[app]
+65.1.93.111 ansible_user=ec2-user ansible_ssh_private_key_file=/home/ec2-user/practice_1.pem
+
+
+sample.yaml
+-------------
+---
+- name: Install tree package on all hosts
+  hosts: web
+  become: yes  # for sudo/root access
+  tasks:
+    - name: Install tree command
+      yum:
+        name: tree
+        state: present
+    - name: install nginx
+      yum:
+        name: nginx
+        state: present
+    - name: start the nginx
+      service:
+        name: nginx
+        state: started
+
+
+command to execute:
+--------------------
+ansible-playbook -i hosts.ini sample.yaml
+ansible-playbook -i <inventory_file_path> <playbook_file_path>
+
+modules
+--------
+yum, service, copy etc 
+
+loops:
+-------
+loops allow tasks to iterate over a list, dictionary, or other iterable data, reducing playbook repetation.
+
+loops.yaml
+-----------
+- name: install multiple packages
+  hosts: all
+  become: yes
+  tasks:
+    - name: install multiple packages
+      yum:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - nginx
+        - git
+        - tree
+		
+loop_dict.yaml
+--------------
+- name: to use loop dictionary
+  hosts: all
+  become: yes
+  tasks:
+    - name: create groups
+      group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - aws
+        - devops
+    - name: create users
+      user:
+        name: "{{ item.username }}"
+        state: present
+        groups: "{{ item.group }}"
+      loop:
+        - { username: Tanzeem, group: aws }
+        - { username: Lakshmi, group: devops }
+		
+conditionals:
+--------------
+conditionals control whether a task runs based on variable, facts. or task results using "when" keyword
+
+command to check which OS and the details
+---------------------------------------------
+cat /etc/os-release
+
+conditional.yaml
+---------------------
+- name: use conditionals
+  hosts: all
+  become: yes
+  tasks:
+    - name: install Apache on amazon linux
+      yum:
+        name: httpd
+        state: present
+      when: ansible_distribution == "Amazon"
+	  
+Handlers:
+---------------
+Handlers are special tasks triggered by other tasks 
+
+- name: use handlers
+  hosts: all
+  become: yes
+  tasks:
+    - name: ensure httpd is installed
+      yum: 
+       name: docker
+       state: present
+      notify: start httpd service
+  handlers:
+    - name: start httpd service
+      service:
+        name: docker
+        state: started 
+------------------------------------------------------
+- name: use handlers
+  hosts: all
+  become: yes
+  tasks:
+    - name: ensure httpd is installed
+      yum:
+       name: httpd
+       state: present
+      notify: start httpd service
+    - name: ensure httpd is started and enabled
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+      when: ansible_distribution == "Amazon"
+  handlers:
+    - name: start httpd service
+      service:
+        name: httpd
+        state: started
+----------------------------------------------------------------
+Ansible role
+-------------
+An ansible role is a structured, reusable way to organize and execute tasks, variables, templates and other resourcses in ansible
+
+To organize automation tasks logically( e.g. installing packages and managing the configurations)
+
+ansible-galaxy:
+---------------
+Ansible galaxy is public repository and community hub for sharing, finding, and using ansible roles to simplify and accelerate automation tasks
+
+to create a role structure
+-----------------------------
+ansible-galaxy init devops
+ansible-galaxy init <role_name>
+
+after running above command you will get a devops direcory created you can check that with below commands
+cd devops
+tree
+
+deploy_apache.yaml
+-------------------
+- hosts: all
+  roles:
+    - devops
+
+defaults/main.yml
+-------------------------------
+---
+# defaults file for devops
+apache_package: httpd
+apache_service: httpd
+apache_port: 80
+website_title: "Welcome to my ansible website"
+website_message: "This is a sample website deployed using ansible"
+manage_firewalld: true
+
+handlers/main.yml
+----------------------------------------
+---
+# handlers file for devops
+- name: Restart Apache
+  systemd:
+    name: "{{ apache_service }}"
+    state: restarted
+  become: yes
+
+tasks/main.yml 
+-----------------------------------------------
+---
+# tasks file for devops
+- name: Install Apache web server
+  yum:
+    name: "{{ apache_package }}"
+    state: present
+  become: yes
+- name: Ensure that Apache service is enabled
+  systemd:
+    name: "{{ apache_package }}"
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Deploy a custom page
+  template:
+    src: index.html.j2
+    dest: /var/www/html/index.html
+    owner: root
+    group: root
+    mode: "0644"
+  become: yes
+  notify: Restart Apache
+
+- name: Install firewalld
+  yum:
+    name: firewalld
+    state: present
+  become: yes
+  when: manage_firewalld
+
+#- name: Ensure firewalld service is running and enabled
+#  systemd:
+#    name: firewalld
+#    state: started
+#    enabled: yes
+#  become: yes
+#  when: manage_firewalld
+
+- name: Open Apache port in firewalld
+  firewalld:
+    port: "{{ apache_port }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  become: yes
+  when: manage_firewalld
+
+templates/index.html.j2
+---------------------------------------------------------
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ website_title }}</title>
+</head>
+<body>
+  <h1>{{ website_title }}</h1>
+  <p>{{ website_message }}</p>
+  <P>Server running on {{ ansible_hostname }} at {{ ansible_default_ipv4.address }}</p>
+</body>
+</html>
+
+
+to execute the role
+cd /home/ec2-user    ----> come to homepage where you have created role
+ansible-playbook -i hosts.ini deploy_apache.yaml
+
