@@ -1,0 +1,303 @@
+```hcl
+provider "aws" {
+  region = "us-east-1"
+}
+```
+
+2. **vpc.tf**: Creates a VPC, public subnet, Internet Gateway, and route table.
+<xaiArtifact artifact_id="670757b1-99bc-4578-963f-63014e454531" artifact_version_id="c3846c96-5b1c-46a6-84c5-a89e91029c0b" title="vpc.tf" contentType="text/x-terraform">
+```hcl
+resource "aws_vpc" "demo_vpc" {
+  cidr_block = "10.0.0.0/16"
+  tags = {
+    Name = "DevOpsVPC"
+  }
+}
+
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = aws_vpc.demo_vpc.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "PublicSubnet1"
+  }
+}
+
+resource "aws_internet_gateway" "demo_igw" {
+  vpc_id = aws_vpc.demo_vpc.id
+  tags = {
+    Name = "DevOpsIGW"
+  }
+}
+
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.demo_vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.demo_igw.id
+  }
+  tags = {
+    Name = "PublicRT"
+  }
+}
+
+resource "aws_route_table_association" "public_rt_assoc" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_rt.id
+}
+```
+
+3. **security_group.tf**: Creates a security group for the EC2 instance.
+<xaiArtifact artifact_id="af34ea29-c853-48a2-bde4-a7dc6a84e070" artifact_version_id="6a3b6308-f274-4dde-80d0-0ddb03419f0c" title="security_group.tf" contentType="text/x-terraform">
+```hcl
+resource "aws_security_group" "web_sg" {
+  vpc_id = aws_vpc.demo_vpc.id
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Replace with your IP for security
+  }
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name = "WebServerSG"
+  }
+}
+```
+
+4. **iam.tf**: Creates an IAM role for EC2 to access S3.
+<xaiArtifact artifact_id="8d76abf2-7071-423e-96d4-f04dafc8003a" artifact_version_id="0b575eac-0d33-415a-8d60-ecb3d6c991fb" title="iam.tf" contentType="text/x-terraform">
+```hcl
+resource "aws_iam_role" "ec2_s3_role" {
+  name = "EC2S3AccessRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "s3_read_policy" {
+  role       = aws_iam_role.ec2_s3_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+}
+
+resource "aws_iam_instance_profile" "ec2_s3_profile" {
+  name = "EC2S3AccessProfile"
+  role = aws_iam_role.ec2_s3_role.name
+}
+```
+
+5. **s3.tf**: Creates an S3 bucket and uploads a webpage.
+<xaiArtifact artifact_id="4488ecba-d53e-46f1-936f-e2af03876cde" artifact_version_id="54be24b1-de2b-4cc1-adab-d3e5ccaf01cc" title="s3.tf" contentType="text/x-terraform">
+```hcl
+resource "aws_s3_bucket" "demo_bucket" {
+  bucket = "my-devops-bucket-js123-4567"  # Must be globally unique
+  tags = {
+    Name = "DevOpsBucket"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "demo_bucket_public_access" {
+  bucket                  = aws_s3_bucket.demo_bucket.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "demo_bucket_policy" {
+  bucket = aws_s3_bucket.demo_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.demo_bucket.arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_s3_object" "index_html" {
+  bucket       = aws_s3_bucket.demo_bucket.id
+  key          = "index.html"
+  source       = "index.html"  # Local file
+  content_type = "text/html"
+}
+```
+
+6. **ec2.tf**: Creates an EC2 instance to serve the S3 webpage.
+<xaiArtifact artifact_id="d3946b69-c333-4f74-828f-3c4b71ba4e1f" artifact_version_id="1c0aebdc-84df-4d6c-9adc-d775735b30fc" title="ec2.tf" contentType="text/x-terraform">
+```hcl
+resource "aws_instance" "web_server" {
+  ami                  = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2, us-east-1
+  instance_type        = "t3.micro"
+  subnet_id            = aws_subnet.public_subnet.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile = aws_iam_instance_profile.ec2_s3_profile.name
+  key_name             = "my-ec2-key"
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              aws s3 cp s3://${aws_s3_bucket.demo_bucket.bucket}/index.html /var/www/html/index.html
+              EOF
+  tags = {
+    Name = "TerraformWebServer"
+  }
+}
+```
+
+7. **index.html**: Local file for S3 upload.
+<xaiArtifact artifact_id="391cdc33-e22b-4544-9ac3-defa5161e90f" artifact_version_id="3c678293-b74f-4f8c-940e-4c16ddb58089" title="index.html" contentType="text/html">
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Terraform Demo</title></head>
+<body>
+  <h1>Terraform AWS Web Server</h1>
+  <p>Served from S3 via EC2!</p>
+</body>
+</html>
+```
+
+---
+
+#### **Demo Steps**
+
+1. **Set Up Terraform**:
+   - Create directory `aws-terraform-demo` and add the above `.tf` files and `index.html`.
+   - Initialize Terraform:
+     ```bash
+     cd aws-terraform-demo
+     terraform init
+     ```
+
+2. **Plan and Apply**:
+   - Preview changes:
+     ```bash
+     terraform plan
+     ```
+   - Apply configuration:
+     ```bash
+     terraform apply -auto-approve
+     ```
+     - Wait 2-5 minutes for resources to provision.
+
+3. **Test the Webpage**:
+   - In **EC2 > Instances**, find `TerraformWebServer` and copy its **Public IP**.
+   - Open `http://<public-ip>` in a browser.
+   - Expected: “Terraform AWS Web Server” from S3’s `index.html`.
+   - Test S3 directly:
+     - In **S3 > Buckets** > `my-devops-bucket-js123-4567`, note the object URL (e.g., `https://my-devops-bucket-js123-4567.s3.amazonaws.com/index.html`).
+     - Open in browser; should match EC2 output.
+
+4. **Troubleshooting**:
+   - **404 Error**: Verify `index.html` in `/var/www/html`:
+     ```bash
+     ssh -i ~/.ssh/my-ec2-key.pem ec2-user@<public-ip>
+     cat /var/www/html/index.html
+     ```
+     - Check Apache: `sudo systemctl status httpd`.
+   - **Access Denied**: Ensure IAM role (`EC2S3AccessRole`) has `AmazonS3ReadOnlyAccess` and S3 bucket policy allows `s3:GetObject`.
+   - **Connection Refused**: Confirm `WebServerSG` allows HTTP (port 80, `0.0.0.0/0`).
+
+5. **Clean Up**:
+   - Destroy resources:
+     ```bash
+     terraform destroy -auto-approve
+     ```
+   - Verify:
+     - **EC2 > Instances**: No `TerraformWebServer`.
+     - **S3 > Buckets**: No `my-devops-bucket-js123-4567`.
+     - **IAM > Roles**: No `EC2S3AccessRole`.
+     - **VPC > Your VPCs**: No `DevOpsVPC`.
+     - **Billing > Bills**: Confirm no charges (Free Tier for `t3.micro`, 5 GB S3).
+
+#### **Demo Outcomes**
+- Students provision a VPC, EC2, IAM role, and S3 bucket with Terraform.
+- They deploy a web server serving S3 content.
+- They test and clean up to avoid costs.
+
+---
+
+### **Teaching Tips**
+1. **Simplify**:
+   - Explain Terraform as “writing a blueprint” for AWS resources.
+   - Focus on `resource` blocks and dependencies (e.g., EC2 depends on VPC).
+2. **DevOps Focus**:
+   - Highlight Terraform for CI/CD infrastructure provisioning.
+   - Connect to S3/EC2 for web app deployment.
+3. **Free Tier**:
+   - Use `t3.micro` (750 hours/month), 5 GB S3.
+   - Stress cleanup (`terraform destroy`) to avoid charges.
+4. **Pitfalls**:
+   - **S3 Bucket Name Conflict**: Ensure globally unique name.
+   - **Access Denied**: Verify IAM role and S3 policy.
+   - **Webpage Fails**: Check Apache and security group.
+5. **Real-World**:
+   - Scenario: Provision a web app infrastructure in a CodePipeline.
+   - Discuss: Store Terraform state in S3 for team collaboration.
+6. **Certification**:
+   - Aligns with AWS Certified DevOps Engineer – Professional (Domain 1: SDLC Automation).
+
+---
+
+### **Resources**
+- **Terraform AWS Provider**: [registry.terraform.io/providers/hashicorp/aws](https://registry.terraform.io/providers/hashicorp/aws)
+- **Free Tier**: [aws.amazon.com/free](https://aws.amazon.com/free)
+- **Tutorial**: HashiCorp’s “Terraform on AWS” guide.
+- **CLI**: Apply Terraform:
+  ```bash
+  terraform apply -auto-approve
+  ```
+
+---
+
+### **Assessment**
+- **Quiz**:
+  - What is Terraform, and how does it differ from Ansible?
+  - Why use an IAM role in the EC2 Terraform code?
+  - How does Terraform ensure consistent infrastructure?
+- **Demo Check**:
+  - Verify webpage loads at `http://<public-ip>`.
+  - Confirm S3 bucket and EC2 are provisioned.
+  - Ensure cleanup (no resources remain).
+- **Discussion**:
+  - How does Terraform enhance CI/CD pipelines?
+  - Why run `terraform destroy` after testing?
+
+---
+
+### **Summary**
+- **Terraform**: Declarative IaC tool for provisioning AWS resources.
+- **Sample Code**: Provisions VPC, EC2, IAM role, and S3 bucket for a web app.
+- **DevOps Use**: Automates infrastructure setup for CI/CD, integrates with EC2/S3.
+
+If you need slides, additional Terraform modules, or more demos (e.g., with CodePipeline), let me know!
